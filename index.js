@@ -8,7 +8,7 @@ var mime = require('mime');
 module.exports = function configureYamlMetaFilter (opts) {
 	// Set default options
 	opts = opts || {};
-	var metaEndTag = opts.metaEndTag || '--META--';
+	var metaEndTag = opts.metaEndTag || '---';
 	var slugifyFnc = opts.slugifyFnc || slug;
 	var parseMimeFnc = (function () {
 		if (typeof opts.parseMime === 'string') {
@@ -31,8 +31,17 @@ module.exports = function configureYamlMetaFilter (opts) {
 	})();
 
 	return function yamlMetaFilter (item) {
-		var _meta = '';
+		var _meta = [];
 		var meta;
+
+		Object.assign(item, {
+			rawMeta: new Buffer(0),
+			year: null,
+			month: null,
+			day: null,
+			status: 'Published',
+			title: null,
+		}, item);
 
 		return through2(function (chunk, enc, done) {
 			// If we have already passed the meta, just passthrough
@@ -44,16 +53,19 @@ module.exports = function configureYamlMetaFilter (opts) {
 			// add to meta and continue
 			var metaTagIndex = chunk.indexOf(metaEndTag);
 			if (metaTagIndex === -1) {
-				_meta += chunk;
+				_meta.push(chunk);
 				return done();
 			}
 
 			// We hare reached the meta tag, slice off the part we
 			// care about, parse stuff, and pass the rest through
-			_meta += chunk.slice(0, metaTagIndex);
+			_meta.push(chunk.slice(0, metaTagIndex + metaEndTag.length));
+
+			// Save the raw meta content
+			item.rawMeta = Buffer.concat(_meta);
 
 			try {
-				meta = yaml.safeLoad(_meta.toString());
+				meta = yaml.safeLoad(item.rawMeta.slice(0, item.rawMeta.length - metaEndTag.length));
 			} catch (e) {
 				return done(e, chunk);
 			}
